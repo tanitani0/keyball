@@ -128,7 +128,8 @@ static const uint8_t PROGMEM led_coord[RGBLED_NUM] = {
 
 // LED zone cycle state, read by the masking code in rgblight_call_driver so it
 // applies to every lighting mode. 0 all on, 1 upper-underglow off, 2 all
-// underglow off, 3 all off.
+// underglow off, 3 "3x5" key block only, 4 all off. The zone definitions and
+// RGB_LED_STATE_COUNT live in config.h.
 uint8_t rgb_led_state = 0;
 
 // Custom keycode to cycle the LED zones. Assign 0x7E40 in Remap via ANY.
@@ -139,7 +140,7 @@ enum custom_keycodes {
 bool process_record_user(uint16_t keycode, keyrecord_t *record) {
     if (keycode == LED_MODE) {
         if (record->event.pressed) {
-            rgb_led_state = (rgb_led_state + 1) % 4;
+            rgb_led_state = (rgb_led_state + 1) % RGB_LED_STATE_COUNT;
             eeconfig_update_user(rgb_led_state); // persist across power cycles
             rgblight_set();                      // repaint immediately
         }
@@ -157,7 +158,9 @@ void keyboard_post_init_user(void) {
     // so we no longer force a boot mode. Restore the LED-zone state from the user
     // EEPROM block; guard the uninitialized (0xFFFFFFFF) value to "all on".
     uint32_t u    = eeconfig_read_user();
-    rgb_led_state = (u == 0xFFFFFFFF) ? 0 : (uint8_t)(u & 0x03);
+    rgb_led_state = (u == 0xFFFFFFFF) ? 0 : (uint8_t)(u & 0x07);
+    // 3bit 幅なので、状態数を減らしたときに範囲外の値が残っていることがある
+    if (rgb_led_state >= RGB_LED_STATE_COUNT) rgb_led_state = 0;
     transaction_register_rpc(USER_SYNC_BACK, back_sync_handler);
 }
 
