@@ -49,6 +49,12 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #    define SPI_MOSI_PIN B2
 #    define SPI_MISO_PIN B3
 #    define SPLIT_HAND_MATRIX_GRID_LOW_IS_LEFT
+// The split link (SERIAL_DRIVER = vendor) already owns PIO0 on RP2040, so the
+// WS2812 vendor driver has to be pushed onto PIO1 or the two fight over the
+// same state machines and the LEDs / the slave half stop working.
+#    ifdef RGBLIGHT_ENABLE
+#        define WS2812_PIO_USE_PIO1
+#    endif
 #endif
 
 // RGB LED settings
