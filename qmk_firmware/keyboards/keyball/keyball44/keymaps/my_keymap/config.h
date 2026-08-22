@@ -58,15 +58,18 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define TAPPING_TERM_PER_KEY
 #define SCROLL_LAYER 3
 
-// The same trick settles the other hold-to-reach layers the moment any other key
-// is pressed, which is what QMK's HOLD_ON_OTHER_KEY_PRESS does. Reusing the
-// get_tapping_term() path we already pay for is cheaper than turning on
-// HOLD_ON_OTHER_KEY_PRESS_PER_KEY (+48 vs +218 bytes measured), and unlike the
-// plain global HOLD_ON_OTHER_KEY_PRESS it leaves mod-taps alone: rolling off the
-// 英数/かな thumb keys into the next letter must stay a tap, not Ctrl+letter.
+// Layers 1 and 2 are also reached by holding, and waiting out the full tapping
+// term to get there feels sluggish. Permissive hold settles them as soon as
+// another key is pressed *and released* inside the term, so nesting a key под
+// the layer key switches immediately while a fast roll off the thumb still
+// types the tap keycode. HOLD_ON_OTHER_KEY_PRESS would decide at the press
+// instead, which is snappier but turns "space, then the next letter" into a
+// layered keypress whenever typing outruns the release.
 //
-// Bitmask of layers, indexed by the hold target of a layer-tap.
-#define HOLD_ON_OTHER_KEY_LAYERS ((1 << 1) | (1 << 2))
+// Per-key rather than global so mod-taps keep their timing: rolling off the
+// 英数/かな thumb keys must stay a tap, not Ctrl+letter.
+#define PERMISSIVE_HOLD_PER_KEY
+#define PERMISSIVE_HOLD_LAYERS ((1 << 1) | (1 << 2))
 
 // Auto Mouse Layer (AML) removed by request; the freed flash is used for the
 // full set of RGB effects above.
