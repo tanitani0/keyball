@@ -92,6 +92,18 @@ layer_state_t layer_state_set_user(layer_state_t state) {
 // is SCROLL_LAYER, whatever tap keycode is paired with it.
 static uint16_t ball_move_time = 0;
 static bool     ball_moved     = false;
+static uint16_t other_key_time = 0;
+
+// Runs from action_exec before action_tapping_process, so a key pressed during
+// an undecided tap-hold is stamped here before the tapping state machine sees
+// it. Storing event.time rather than timer_read() is what makes this safe: the
+// tap-hold key's own press stamps its exact press time, so the "stamped after
+// the press" test below is false for itself and cannot be tripped by a stale
+// value that has wrapped -- every press re-anchors the stamp.
+bool pre_process_record_user(uint16_t keycode, keyrecord_t *record) {
+    if (record->event.pressed) other_key_time = record->event.time;
+    return true;
+}
 
 report_mouse_t pointing_device_task_user(report_mouse_t r) {
     // Runs on the master, after the driver has applied both halves' motion.
@@ -111,11 +123,16 @@ report_mouse_t pointing_device_task_user(report_mouse_t r) {
 }
 
 uint16_t get_tapping_term(uint16_t keycode, keyrecord_t *record) {
-    if (IS_QK_LAYER_TAP(keycode) && QK_LAYER_TAP_GET_LAYER(keycode) == SCROLL_LAYER) {
-        // Signed 16-bit difference, so this asks "did the ball move after this
-        // key went down?" and stays correct across timer wraparound.
-        if (ball_moved && (int16_t)(ball_move_time - record->event.time) > 0) {
-            return 0; // expire immediately -> resolve as hold on the next tick
+    if (IS_QK_LAYER_TAP(keycode)) {
+        uint8_t layer = QK_LAYER_TAP_GET_LAYER(keycode);
+        // Both tests are a signed 16-bit difference asking "did this happen
+        // after the key went down?", which stays correct across timer wraparound.
+        // Returning 0 expires the term retroactively -> hold on the next tick.
+        if (layer == SCROLL_LAYER && ball_moved && (int16_t)(ball_move_time - record->event.time) > 0) {
+            return 0;
+        }
+        if ((HOLD_ON_OTHER_KEY_LAYERS & (1 << layer)) && (int16_t)(other_key_time - record->event.time) > 0) {
+            return 0;
         }
     }
     return TAPPING_TERM;

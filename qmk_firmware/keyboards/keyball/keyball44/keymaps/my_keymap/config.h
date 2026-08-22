@@ -58,6 +58,16 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define TAPPING_TERM_PER_KEY
 #define SCROLL_LAYER 3
 
+// The same trick settles the other hold-to-reach layers the moment any other key
+// is pressed, which is what QMK's HOLD_ON_OTHER_KEY_PRESS does. Reusing the
+// get_tapping_term() path we already pay for is cheaper than turning on
+// HOLD_ON_OTHER_KEY_PRESS_PER_KEY (+48 vs +218 bytes measured), and unlike the
+// plain global HOLD_ON_OTHER_KEY_PRESS it leaves mod-taps alone: rolling off the
+// 英数/かな thumb keys into the next letter must stay a tap, not Ctrl+letter.
+//
+// Bitmask of layers, indexed by the hold target of a layer-tap.
+#define HOLD_ON_OTHER_KEY_LAYERS ((1 << 1) | (1 << 2))
+
 // Auto Mouse Layer (AML) removed by request; the freed flash is used for the
 // full set of RGB effects above.
 
