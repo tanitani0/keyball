@@ -80,9 +80,45 @@ combo_t key_combos[] = {
 };
 
 layer_state_t layer_state_set_user(layer_state_t state) {
-    // Auto enable scroll mode when the highest layer is 3
-    keyball_set_scroll_mode(get_highest_layer(state) == 3);
+    // Auto enable scroll mode when the highest layer is the scroll layer
+    keyball_set_scroll_mode(get_highest_layer(state) == SCROLL_LAYER);
     return state;
+}
+
+// --- Instant scroll on ball motion -------------------------------------------
+// See config.h for why shortening the tapping term settles a pending tap-hold.
+// The keymap itself lives in EEPROM (edited in Remap), so this must not depend
+// on which keycode sits on the key: it matches any layer-tap whose hold target
+// is SCROLL_LAYER, whatever tap keycode is paired with it.
+static uint16_t ball_move_time = 0;
+static bool     ball_moved     = false;
+
+report_mouse_t pointing_device_task_user(report_mouse_t r) {
+    // Runs on the master, after the driver has applied both halves' motion.
+    // r.x/r.y are the post-divisor deltas, so this ignores sensor jitter that
+    // was too small to move the cursor. While scrolling they are already 0.
+    if (r.x != 0 || r.y != 0) {
+        ball_move_time = timer_read();
+        ball_moved     = true;
+    } else if (ball_moved && timer_elapsed(ball_move_time) > TAPPING_TERM) {
+        // Expire the stamp well before the 16-bit timer can wrap past it.
+        // Without this, a timestamp older than ~32.7s reads as being in the
+        // future and would settle the next tap-hold the instant it is pressed.
+        // Nothing can still be pending this long after the motion anyway.
+        ball_moved = false;
+    }
+    return r;
+}
+
+uint16_t get_tapping_term(uint16_t keycode, keyrecord_t *record) {
+    if (IS_QK_LAYER_TAP(keycode) && QK_LAYER_TAP_GET_LAYER(keycode) == SCROLL_LAYER) {
+        // Signed 16-bit difference, so this asks "did the ball move after this
+        // key went down?" and stays correct across timer wraparound.
+        if (ball_moved && (int16_t)(ball_move_time - record->event.time) > 0) {
+            return 0; // expire immediately -> resolve as hold on the next tick
+        }
+    }
+    return TAPPING_TERM;
 }
 
 #ifdef OLED_ENABLE

@@ -40,6 +40,24 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #define TAP_CODE_DELAY 5
 
+// --- Instant scroll on ball motion -------------------------------------------
+// The scroll layer is reached through the hold half of a tap-hold key, so it
+// normally takes TAPPING_TERM (200ms) of holding before scrolling starts --
+// long enough to feel broken when you just want to flick the ball.
+//
+// QMK re-evaluates WITHIN_TAPPING_TERM on every scan (action_exec runs a tick
+// event from keyboard_task), and that macro calls get_tapping_term() each time.
+// So shortening the term *while the decision is still pending* retroactively
+// expires it: the next tick takes the "after TAPPING_TERM" path in
+// action_tapping.c with tap.count == 0, which is exactly the hold branch.
+// keymap.c uses this to settle the key the moment the ball moves.
+//
+// Scoped to tap-hold keys targeting SCROLL_LAYER. Applying it to every layer-tap
+// would mean brushing the ball while resting a thumb on space silently shifts
+// layers.
+#define TAPPING_TERM_PER_KEY
+#define SCROLL_LAYER 3
+
 // Auto Mouse Layer (AML) removed by request; the freed flash is used for the
 // full set of RGB effects above.
 

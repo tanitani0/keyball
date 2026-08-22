@@ -72,7 +72,7 @@ sudo apt install gcc-arm-none-eabi               # Liatris
 
 ### 容量
 
-Pro Micro (caterina) の上限は 28,672 バイトで、現状 **28,316 バイト / 残り 356 バイト**。
+Pro Micro (caterina) の上限は 28,672 バイトで、現状 **28,568 バイト / 残り 104 バイト**。
 非常にタイトなので、機能追加のたびにビルド時の警告を確認すること。
 足りなくなったら `config.h` の `RGBLIGHT_EFFECT_*` を削ると 1 効果あたり 200 バイト前後戻る
 （CHRISTMAS / RGB_TEST / ALTERNATING の3つで実測 624 バイト）。
@@ -153,6 +153,36 @@ LED のチェーン順は物理的な並びと一致していないため、実�
 
 座標の実測には同梱の **`probe` キーマップ**を使う（チェーンインデックスを1つずつ
 点灯させて物理位置を記録するための専用ファーム）。
+
+### ボール変位でスクロールを即座に開始
+スクロールレイヤ（`SCROLL_LAYER`、既定は 3）は tap/hold キーの hold 側で踏むが、
+素の QMK では hold が確定するまで `TAPPING_TERM`（200ms）待つため、ボールを
+動かし始めてから実際にスクロールに変わるまでが体感でかなり遅い。
+
+QMK は毎スキャン `WITHIN_TAPPING_TERM` を評価し直しており（`keyboard_task` が
+`action_exec(MAKE_TICK_EVENT)` を回す）、そのたびに `get_tapping_term()` を呼ぶ。
+つまり**判定が保留中のあいだに tapping term を縮めると、遡って期限切れになる**。
+`action_tapping.c` の "after TAPPING_TERM" 分岐に入り、`tap.count == 0` なので
+hold として確定する。これを利用して、ボールが動いた瞬間に term を 0 にしている。
+
+- 検出は `pointing_device_task_user`（マスタ側で、両手の motion 適用後に走る）。
+  `r.x`/`r.y` は除算後の値なので、カーソルが動かない程度のセンサのゆらぎは拾わない。
+- 対象は **hold 先が `SCROLL_LAYER` の layer-tap だけ**。全ての layer-tap に
+  掛けると、親指をスペースに置いたままボールに触れただけでレイヤが変わる。
+- **キーマップは Remap（EEPROM）側が実体**なので、特定のキーコードには依存せず、
+  「hold 先が `SCROLL_LAYER` の layer-tap」という条件だけで判定している。
+  Remap で tap 側に何を割り当てても効く。
+- ただし **hold 先のレイヤ番号を変えたら `config.h` の `SCROLL_LAYER` も直すこと**。
+  `layer_state_set_user` のスクロール判定も同じ定数を見ている。
+
+タイムスタンプは「変位が押下より後か」を符号付き16bit差で見ているが、値が
+32.7秒以上古くなるとラップして「未来」に見えてしまうため、`TAPPING_TERM` を
+過ぎた時点で無効化している（これを入れないと、起動後ボールに触れずに一定時間
+経ってから押した最初の tap/hold が即 hold になる）。
+
+なお Keyball の `SCRL_MO`（Remap 上の `kb 7`）は tap/hold ではなく
+**momentary**（押している間だけスクロール）なので、そもそも待ち時間はない。
+遅延が出るのは layer-tap の hold 側でレイヤを踏んでいる場合。
 
 ### 電流バジェット
 `config.h` の `RGB_CURRENT_BUDGET` と `RGB_WEIGHT_R/G/B`。実測したちらつき挙動に
