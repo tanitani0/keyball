@@ -1,44 +1,13 @@
-From 03e5af73b948a413d8c33a76426dc2f1f3fffaec Mon Sep 17 00:00:00 2001
-From: tabas <tabasco1024@gmail.com>
-Date: Sat, 22 Aug 2026 14:27:07 +0900
-Subject: [PATCH] =?UTF-8?q?rgblight:=20=E9=9B=BB=E6=B5=81=E3=83=90?=
- =?UTF-8?q?=E3=82=B8=E3=82=A7=E3=83=83=E3=83=88=E5=88=B6=E5=BE=A1=E3=81=A8?=
- =?UTF-8?q?LED=E3=82=BE=E3=83=BC=E3=83=B3=E3=83=9E=E3=82=B9=E3=82=AF?=
- =?UTF-8?q?=E3=82=92=E8=BF=BD=E5=8A=A0?=
-MIME-Version: 1.0
-Content-Type: text/plain; charset=UTF-8
-Content-Transfer-Encoding: 8bit
-
-Keyball44 は USB バスパワーで、白などチャンネルを同時に多く点灯させる
-配色だと ProMicro のポリフューズ／ポート供給を超えて VDD がドループし、
-LED がちらつく。RGBLIGHT_LIMIT_VAL はチャンネル単位の上限しか設けられず
-単色まで暗くなってしまうため、フレーム全体の推定電流が予算を超えたときだけ
-比例縮小する方式にした。低負荷のシーンは素通しになる。
-
-あわせて LED ゾーンマスク（キーLED／アンダーグロー／上部アンダーグローの
-点灯パターン切り替え）もここで処理する。全モードに一律で効かせる必要があり、
-隠した LED を電流計算から外すためでもある。
-
-rgblight_call_driver は weak 宣言されているが、rgblight.c が同一翻訳単位内で
-自前の定義をインライン展開してしまうため、キーマップ側からの override が
-効かない。そのためコアを直接変更している。RGB_CURRENT_BUDGET が未定義なら
-完全に無効化されるので、この定義を持つキーマップ以外には影響しない。
-
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
----
- quantum/rgblight/rgblight.c | 54 +++++++++++++++++++++++++++++++++++++
- 1 file changed, 54 insertions(+)
-
 diff --git a/quantum/rgblight/rgblight.c b/quantum/rgblight/rgblight.c
-index 158112f3..88277378 100644
+index 158112f3..e194f8a6 100644
 --- a/quantum/rgblight/rgblight.c
 +++ b/quantum/rgblight/rgblight.c
-@@ -898,6 +898,60 @@ void rgblight_wakeup(void) {
+@@ -898,6 +898,68 @@ void rgblight_wakeup(void) {
  #endif
  
  __attribute__((weak)) void rgblight_call_driver(LED_TYPE *start_led, uint8_t num_leds) {
 +#ifdef RGB_CURRENT_BUDGET
-+    // Current-aware brightness limiter (keyball tabe keymap). See that keymap's
++    // Current-aware brightness limiter (keyball my_keymap). See that keymap's
 +    // config.h for the model/rationale. Weighted stress = Σ(r*Wr+g*Wg+b*Wb)/256;
 +    // if it exceeds the budget, scale the whole frame down proportionally.
 +#    ifndef RGB_WEIGHT_R
@@ -52,11 +21,19 @@ index 158112f3..88277378 100644
 +#    endif
 +#    ifdef RGB_BACK_FIRST
 +    // LED zone cycle: owned by the keymap, masked here so every mode obeys it.
-+    extern uint8_t rgb_led_state; // 0 all on, 1 upper UG off, 2 all UG off, 3 all off
++    // 0 all on, 1 upper UG off, 2 all UG off, 3 "3x5" key block only, 4 all off
++    extern uint8_t rgb_led_state;
 +    uint8_t        led_state = rgb_led_state;
 +    bool           masking   = (led_state != 0);
++#        ifdef RGB_3X5_MASK_BYTES
++    static const uint8_t PROGMEM rgb_3x5_mask[] = {RGB_3X5_MASK_BYTES};
++#            define RGB_IS_3X5(gi) ((pgm_read_byte(&rgb_3x5_mask[(gi) >> 3]) >> ((gi) & 7)) & 1)
++#        else
++#            define RGB_IS_3X5(gi) false
++#        endif
 +#        define RGB_GI(idx) ((uint8_t)(rgblight_ranges.clipping_start_pos + (idx)))
-+#        define RGB_HIDDEN(idx) (led_state == 3 ? true : \
++#        define RGB_HIDDEN(idx) (led_state == 4 ? true : \
++                                 led_state == 3 ? !RGB_IS_3X5(RGB_GI(idx)) : \
 +                                 led_state == 2 ? (RGB_GI(idx) >= RGB_BACK_FIRST && RGB_GI(idx) <= RGB_BACK_LAST) : \
 +                                 led_state == 1 ? RGB_IS_UPPER_UG(RGB_GI(idx)) : false)
 +#    else
@@ -94,6 +71,3 @@ index 158112f3..88277378 100644
      ws2812_setleds(start_led, num_leds);
  }
  
--- 
-2.43.0
-

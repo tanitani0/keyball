@@ -35,8 +35,15 @@
 `LTO_ENABLE = yes` がこれを助長している。そのためコアを直接触っている。
 
 パッチは `qmk_firmware` の `main` ブランチにコミット済み。控えとして
-[`patches/qmk-0.22.14-rgblight-current-budget.patch`](patches/qmk-0.22.14-rgblight-current-budget.patch)
-も同梱してあるので、QMK を別バージョンに更新したり再クローンした場合はこれを当て直す。
+[`patches/qmk-0.22.14-rgblight.patch`](patches/qmk-0.22.14-rgblight.patch)
+も同梱してある（コミット単位ではなく 0.22.14 からの累積差分）。QMK を別バージョンに
+更新したり再クローンした場合はこれを当て直す。**コアパッチを変更したら再生成すること**:
+
+```bash
+cd ~/firmware/qmk_firmware
+git diff ca454169 -- quantum/rgblight/rgblight.c \
+  > keyboards/keyball/keyball44/keymaps/my_keymap/patches/qmk-0.22.14-rgblight.patch
+```
 
 > **移行時のTODO:** Liatris (RP2040) では容量に余裕ができるので `LTO_ENABLE` を切れる。
 > そうすると weak override が本来どおり効くようになり、このコアパッチは不要になって
@@ -65,7 +72,7 @@ sudo apt install gcc-arm-none-eabi               # Liatris
 
 ### 容量
 
-Pro Micro (caterina) の上限は 28,672 バイトで、現状 **28,176 バイト / 残り 496 バイト**。
+Pro Micro (caterina) の上限は 28,672 バイトで、現状 **28,316 バイト / 残り 356 バイト**。
 非常にタイトなので、機能追加のたびにビルド時の警告を確認すること。
 足りなくなったら `config.h` の `RGBLIGHT_EFFECT_*` を削ると 1 効果あたり 200 バイト前後戻る
 （CHRISTMAS / RGB_TEST / ALTERNATING の3つで実測 624 バイト）。
@@ -99,12 +106,39 @@ UF2 非対応）。キーマップ編集（WebHID/VIA）はこれまでどおり
 ## このキーマップの構成要素
 
 ### LED ゾーン切り替え (`LED_MODE`)
-キーコード `0x7E40` を Remap の ANY で割り当てる。押すたびに
-全点灯 → 上部アンダーグロー消灯 → アンダーグロー全消灯 → 全消灯 を巡回する。
-マスクは `rgblight_call_driver`（コアパッチ側）で行っているので全モードに効く。
+キーコード `0x7E40` を Remap の ANY で割り当てる。押すたびに以下を巡回する。
 
-状態は `eeconfig_read_user()` で永続化している。**パターンを5つ以上に増やす場合は
-`keymap.c` の復元側のマスク `u & 0x03` も広げること**（忘れると電源断で巻き戻る）。
+| 状態 | 内容 | 点灯数 |
+|---|---|---|
+| 0 | 全点灯 | 60 |
+| 1 | 上部アンダーグロー消灯 | 54 |
+| 2 | アンダーグロー全消灯 | 40 |
+| 3 | 「3x5」キーブロックのみ点灯 | 36 |
+| 4 | 全消灯 | 0 |
+
+マスクは `rgblight_call_driver`（コアパッチ側）で行っているので全モードに効き、
+消灯した LED は電流バジェットの計算からも外れる。状態は `eeconfig_read_user()`
+で永続化し、`housekeeping_task_user` からスレーブ側へ同期している。
+
+ゾーンの定義はすべて `config.h` にある。状態を増減するときは:
+
+- `RGB_LED_STATE_COUNT` を更新する（`keymap.c` の巡回と範囲チェックが参照する）
+- `rgblight.c` の `RGB_HIDDEN` マクロに case を足す。**番号は末尾ではなく
+  意図した位置に挿入する**（「全消灯」は常に最後の番号でいてほしい）
+- **6状態を超えるなら `keymap.c` の EEPROM 復元マスク `u & 0x07` を広げる**
+  （忘れると電源断で巻き戻る）
+
+`3x5` ゾーンの集合は [`led-1d-coordinates.csv`](led-1d-coordinates.csv) の
+`3x5領域か` 列が実体で、`config.h` の `RGB_3X5_MASK_BYTES` はそこから生成した
+8バイトのビットマスク。**CSV を編集したらマスクを再生成すること**:
+
+```bash
+python3 tools/gen-zone-mask.py            # 既定の 3x5領域か 列
+python3 tools/gen-zone-mask.py 上部アンダーグローか   # 他の列も可
+```
+
+生成結果を `config.h` に貼り直す。スクリプトはマスクから復元した集合が CSV と
+一致することを assert で検証している。
 
 ### 座標ベースの RGB エフェクト
 LED のチェーン順は物理的な並びと一致していないため、実測した1D座標

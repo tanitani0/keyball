@@ -89,12 +89,23 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //   underglow (back)      : chain 20..39
 //   upper underglow subset: chain 20..22 (left) and 37..39 (right)
 // The LED_MODE keycode (0x7E40, assign in Remap via ANY) cycles:
-//   0 all on -> 1 upper underglow off -> 2 all underglow off -> 3 all off -> 0
+//   0 all on -> 1 upper underglow off -> 2 all underglow off
+//     -> 3 "3x5" key block only -> 4 all off -> 0
 // Masking is done in rgblight_call_driver, so it applies to every mode and the
 // hidden LEDs also drop out of the current budget.
+#define RGB_LED_STATE_COUNT 5
 #define RGB_BACK_FIRST 20
 #define RGB_BACK_LAST  39
 #define RGB_IS_UPPER_UG(gi) (((gi) >= 20 && (gi) <= 22) || ((gi) >= 37 && (gi) <= 39))
+
+// The "3x5" block: the front key LEDs flagged in the 3x5領域か column of
+// led-1d-coordinates.csv (36 LEDs; the thumb-key LEDs 9, 13 and 46 are out).
+// A 60-bit set packed into 8 bytes, expanded into a PROGMEM table in
+// rgblight_call_driver. Packing it this way rather than as two uint32_t
+// constants avoids a runtime 32-bit shift per LED, which costs ~100 bytes of
+// flash on AVR -- worth it while the Pro Micro is this close to full.
+// To regenerate after editing the CSV, run tools/gen-zone-mask.py here.
+#define RGB_3X5_MASK_BYTES 0xFF, 0xDD, 0x0F, 0x00, 0x00, 0xBF, 0xFF, 0x07
 
 // Key processing only happens on the master half, so the toggle state has to be
 // pushed to the slave or only one side would go dark.
