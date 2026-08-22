@@ -99,13 +99,13 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define RGB_IS_UPPER_UG(gi) (((gi) >= 20 && (gi) <= 22) || ((gi) >= 37 && (gi) <= 39))
 
 // The "3x5" block: the front key LEDs flagged in the 3x5領域か column of
-// led-1d-coordinates.csv (33 LEDs: 3x6 on the left, 3x5 on the right).
+// led-1d-coordinates.csv (30 LEDs: 3 rows x 5 columns on each half).
 // A 60-bit set packed into 8 bytes, expanded into a PROGMEM table in
 // rgblight_call_driver. Packing it this way rather than as two uint32_t
 // constants avoids a runtime 32-bit shift per LED, which costs ~100 bytes of
 // flash on AVR -- worth it while the Pro Micro is this close to full.
 // To regenerate after editing the CSV, run tools/gen-zone-mask.py here.
-#define RGB_3X5_MASK_BYTES 0xFF, 0xDD, 0x0F, 0x00, 0x00, 0xB8, 0xFF, 0x07
+#define RGB_3X5_MASK_BYTES 0xFF, 0xDD, 0x01, 0x00, 0x00, 0xB8, 0xFF, 0x07
 
 // Key processing only happens on the master half, so the toggle state has to be
 // pushed to the slave or only one side would go dark.
