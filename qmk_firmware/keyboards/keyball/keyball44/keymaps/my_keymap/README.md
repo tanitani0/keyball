@@ -63,12 +63,21 @@ cd ~/firmware/qmk_firmware
 #   -> keyball_keyball44_my_keymap_liatris.uf2
 ```
 
-必要なツールチェーン:
+必要なツールチェーン（導入済み: avr-gcc 7.3.0 / arm-none-eabi-gcc 13.2.1）:
 
 ```bash
 sudo apt install gcc-avr avr-libc binutils-avr   # Pro Micro
 sudo apt install gcc-arm-none-eabi               # Liatris
 ```
+
+`make keyball/keyball44:my_keymap` のように **make を直接叩く場合は、`qmk` 自体が PATH に
+必要**（ビルド中に make が qmk を呼ぶ）。venv を有効化しておくこと:
+
+```bash
+source ~/firmware/.venv/bin/activate
+```
+
+上記の `qmk compile` をフルパスで呼ぶ形なら不要。
 
 ### 容量
 
