@@ -72,7 +72,8 @@ sudo apt install gcc-arm-none-eabi               # Liatris
 
 ### 容量
 
-Pro Micro (caterina) の上限は 28,672 バイトで、現状 **28,616 バイト / 残り 56 バイト**。
+Pro Micro (caterina) の上限は 28,672 バイトで、現状 **28,650 バイト / 残り 22 バイト**。
+**もう空きがない。** Pro Micro のまま何か足すなら、まず下記のどれかで容量を作ること。
 非常にタイトなので、機能追加のたびにビルド時の警告を確認すること。
 足りなくなったら `config.h` の `RGBLIGHT_EFFECT_*` を削ると 1 効果あたり 200 バイト前後戻る
 （CHRISTMAS / RGB_TEST / ALTERNATING の3つで実測 624 バイト）。
@@ -184,32 +185,37 @@ hold として確定する。これを利用して、ボールが動いた瞬間
 **momentary**（押している間だけスクロール）なので、そもそも待ち時間はない。
 遅延が出るのは layer-tap の hold 側でレイヤを踏んでいる場合。
 
-### 他キーの押下で hold を即座に確定（レイヤ1, 2）
-レイヤ1・2 も hold で踏んでいるので、同じ「保留中に tapping term を縮める」手を
-使って、**他のキーが押された瞬間に hold として確定**させている。挙動としては
-QMK の `HOLD_ON_OTHER_KEY_PRESS` と同じ（`action_tapping.c` 内で通る分岐も同一）。
+### レイヤ1, 2 の hold を早く確定させる (permissive hold)
+レイヤ1・2 も hold で踏んでいるが、素の QMK では `TAPPING_TERM` を待ち切らないと
+hold にならず、切り替わりが遅い。`PERMISSIVE_HOLD_PER_KEY` を使って、
+**他のキーを入れ子に押して離した時点で hold 確定**にしている。
 
-対象レイヤは `config.h` の `HOLD_ON_OTHER_KEY_LAYERS`（レイヤ番号のビットマスク）。
+対象レイヤは `config.h` の `PERMISSIVE_HOLD_LAYERS`（レイヤ番号のビットマスク）。
 
-QMK 標準の機能を使わず自前でやっているのは容量のため。実測（AVR）:
+`HOLD_ON_OTHER_KEY_PRESS`（他キーの「押し」で確定）ではなく permissive hold
+（「離し」で確定）にしているのは、レイヤ1の tap 側がスペースだから:
 
-| 方式 | サイズ | 増分 |
+```
+入れ子（レイヤを使いたいとき）
+  LT↓  X↓  X↑  LT↑   -> どちらの方式でも レイヤ1のX
+
+ローリング（高速に打っているとき）
+  LT↓  X↓  LT↑  X↑   -> permissive hold      : スペース + X   ← 意図どおり
+                        hold on other key press: レイヤ1のX     ← 誤発動
+```
+
+per-key（グローバルではなく）なのは mod-tap を巻き込まないため。
+`LCTL_T(KC_LNG2)` のような英数/かなキーからローリングで次の文字へ移ったときに
+Ctrl+文字 になってしまう。
+
+実測（AVR、ボール機能まで入れた 28,568 が基準）:
+
+| 方式 | サイズ | 残り |
 |---|---|---|
-| `HOLD_ON_OTHER_KEY_PRESS`（グローバル） | 28,620 | +52 |
-| `HOLD_ON_OTHER_KEY_PRESS_PER_KEY` + `get_hold_on_other_key_press` | 28,786 | +218（**容量超過**） |
-| **`get_tapping_term` 流用**（採用） | **28,616** | **+48** |
-
-per-key 版は Pro Micro に入らない。グローバル版は入るが **mod-tap にも掛かる**ため、
-`LCTL_T(KC_LNG2)` のような英数/かなキーからローリングで次の文字に移ったときに
-Ctrl+文字 になってしまう。採用した方式はレイヤ番号で絞れるうえ一番安い。
-
-検出は `pre_process_record_user`。これは `action_exec` 内で `action_tapping_process`
-より**前**に呼ばれるので、保留中の tap/hold より先に割り込みキーを捕まえられる。
-
-記録するのは `timer_read()` ではなく **`record->event.time`**（押下イベントの時刻）。
-こうすると tap/hold キー自身の押下が自分の押下時刻をそのまま刻むため、
-「押下より後か」の判定が自分自身に対しては必ず偽になり、かつ押下のたびに
-基準が更新されるのでタイムスタンプが古くなってラップする余地もなくなる。
+| `PERMISSIVE_HOLD`（グローバル） | 28,580 | 92 |
+| **`PERMISSIVE_HOLD_PER_KEY` + `get_permissive_hold`**（採用） | **28,650** | **22** |
+| `HOLD_ON_OTHER_KEY_PRESS_PER_KEY` + フック | 28,786 | **容量超過** |
+| `get_tapping_term` を流用した自前実装（押しで確定） | 28,616 | 56 |
 
 ### 電流バジェット
 `config.h` の `RGB_CURRENT_BUDGET` と `RGB_WEIGHT_R/G/B`。実測したちらつき挙動に
