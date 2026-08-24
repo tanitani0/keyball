@@ -173,7 +173,66 @@ static const uint8_t PROGMEM led_coord[RGBLED_NUM] = {
 // applies to every lighting mode. 0 all on, 1 upper-underglow off, 2 all
 // underglow off, 3 "3x5" key block only, 4 all off. The zone definitions and
 // RGB_LED_STATE_COUNT live in config.h.
-uint8_t rgb_led_state = 0;
+static uint8_t rgb_led_state = 0;
+
+// --- Frame post-processing: zone mask + current-aware limiter ----------------
+// Overrides the weak definition in quantum/rgblight/rgblight.c so it runs for
+// every lighting mode, built-in ones included, and so hidden LEDs drop out of
+// the current estimate. This lived in the QMK core until the RP2040 swap: with
+// LTO on, rgblight.c inlines its own weak definition and a keymap override is
+// silently ignored, and the Pro Micro had no flash to spare for turning LTO
+// off. See config.h for the current model and the zone definitions.
+void rgblight_call_driver(LED_TYPE *start_led, uint8_t num_leds) {
+    uint8_t led_state = rgb_led_state;
+    bool    masking   = (led_state != 0);
+
+    static const uint8_t PROGMEM rgb_3x5_mask[] = {RGB_3X5_MASK_BYTES};
+#    define RGB_IS_3X5(gi) ((pgm_read_byte(&rgb_3x5_mask[(gi) >> 3]) >> ((gi) & 7)) & 1)
+    // Chain index of buffer slot idx. With RGBLIGHT_SPLIT each half renders only
+    // its own clipped span, so the zone tests need the global index.
+#    define RGB_GI(idx) ((uint8_t)(rgblight_ranges.clipping_start_pos + (idx)))
+#    define RGB_HIDDEN(idx) (led_state == 4 ? true : \
+                             led_state == 3 ? !RGB_IS_3X5(RGB_GI(idx)) : \
+                             led_state == 2 ? (RGB_GI(idx) >= RGB_BACK_FIRST && RGB_GI(idx) <= RGB_BACK_LAST) : \
+                             led_state == 1 ? RGB_IS_UPPER_UG(RGB_GI(idx)) : false)
+
+#    ifdef RGB_CURRENT_BUDGET
+    uint32_t stress = 0;
+    for (uint8_t i = 0; i < num_leds; i++) {
+        if (masking && RGB_HIDDEN(i)) continue; // hidden LEDs draw no current
+        stress += (uint32_t)start_led[i].r * RGB_WEIGHT_R + (uint32_t)start_led[i].g * RGB_WEIGHT_G + (uint32_t)start_led[i].b * RGB_WEIGHT_B;
+    }
+    stress >>= 8; // back to byte-equivalent units
+    uint16_t scale = 256; // 1.0 in 0..256 fixed point
+    if (stress > RGB_CURRENT_BUDGET) {
+        scale = (uint32_t)RGB_CURRENT_BUDGET * 256 / stress;
+    }
+#    else
+    const uint16_t scale = 256;
+#    endif
+
+    if (scale < 256 || masking) {
+        LED_TYPE buf[RGBLED_NUM];
+        for (uint8_t i = 0; i < num_leds; i++) {
+            if (masking && RGB_HIDDEN(i)) {
+                buf[i].r = 0;
+                buf[i].g = 0;
+                buf[i].b = 0;
+                continue;
+            }
+            buf[i]   = start_led[i];
+            buf[i].r = ((uint16_t)start_led[i].r * scale) >> 8;
+            buf[i].g = ((uint16_t)start_led[i].g * scale) >> 8;
+            buf[i].b = ((uint16_t)start_led[i].b * scale) >> 8;
+        }
+        ws2812_setleds(buf, num_leds);
+        return;
+    }
+    ws2812_setleds(start_led, num_leds);
+#    undef RGB_HIDDEN
+#    undef RGB_GI
+#    undef RGB_IS_3X5
+}
 
 // Custom keycode to cycle the LED zones. Assign 0x7E40 in Remap via ANY.
 enum custom_keycodes {

@@ -22,32 +22,7 @@
 | リポジトリ | ブランチ | 内容 |
 |---|---|---|
 | `keyball` | `main` | このキーマップ、`probe` キーマップ、`keyball44/config.h` と `lib/keyball/keyball.c` への変更 |
-| `qmk_firmware` | `main` | QMK 0.22.14 (`ca454169`) + `quantum/rgblight/rgblight.c` へのコアパッチ + 上記シンボリックリンク |
-
-## QMK コアへのパッチ（重要）
-
-このキーマップは **`quantum/rgblight/rgblight.c` への変更に依存している**。
-電流バジェットによる減光と LED ゾーンマスクがそこに入っていないと、
-`RGB_CURRENT_BUDGET` や `LED_MODE` キーが機能しない。
-
-`rgblight_call_driver()` は weak 宣言されているのにキーマップ側から override できない。
-`rgblight.c` が同一翻訳単位内で自前の定義をインライン展開してしまうためで、
-`LTO_ENABLE = yes` がこれを助長している。そのためコアを直接触っている。
-
-パッチは `qmk_firmware` の `main` ブランチにコミット済み。控えとして
-[`patches/qmk-0.22.14-rgblight.patch`](patches/qmk-0.22.14-rgblight.patch)
-も同梱してある（コミット単位ではなく 0.22.14 からの累積差分）。QMK を別バージョンに
-更新したり再クローンした場合はこれを当て直す。**コアパッチを変更したら再生成すること**:
-
-```bash
-cd ~/firmware/qmk_firmware
-git diff ca454169 -- quantum/rgblight/rgblight.c \
-  > keyboards/keyball/keyball44/keymaps/my_keymap/patches/qmk-0.22.14-rgblight.patch
-```
-
-> **移行時のTODO:** Liatris (RP2040) では容量に余裕ができるので `LTO_ENABLE` を切れる。
-> そうすると weak override が本来どおり効くようになり、このコアパッチは不要になって
-> keymap.c 側へ移せる可能性が高い。移行時に検証すること。
+| `qmk_firmware` | `main` | QMK 0.22.14 (`ca454169`) + 上記シンボリックリンクのみ（コア改造なし） |
 
 ## ビルド
 
@@ -126,14 +101,20 @@ UF2 非対応）。キーマップ編集（WebHID/VIA）はこれまでどおり
 | 3 | 「3x5」キーブロックのみ点灯 | 30 |
 | 4 | 全消灯 | 0 |
 
-マスクは `rgblight_call_driver`（コアパッチ側）で行っているので全モードに効き、
+マスクは `keymap.c` の `rgblight_call_driver`（QMK の weak シンボルを上書き）で
+行っているので全モードに効き、
 消灯した LED は電流バジェットの計算からも外れる。状態は `eeconfig_read_user()`
 で永続化し、`housekeeping_task_user` からスレーブ側へ同期している。
+
+> この上書きが効くのは `rules.mk` で `LTO_ENABLE = no` にしているから。LTO を有効に
+> すると `rgblight.c` が自前の weak 定義をインライン展開してしまい、**エラーも警告も
+> 出ないまま上書きが無視される**（LED ゾーンと電流制御が丸ごと効かなくなる）。
+> Pro Micro 時代は容量の都合で LTO を切れず、やむなく QMK コアを直接改造していた。
 
 ゾーンの定義はすべて `config.h` にある。状態を増減するときは:
 
 - `RGB_LED_STATE_COUNT` を更新する（`keymap.c` の巡回と範囲チェックが参照する）
-- `rgblight.c` の `RGB_HIDDEN` マクロに case を足す。**番号は末尾ではなく
+- `keymap.c` の `RGB_HIDDEN` マクロに case を足す。**番号は末尾ではなく
   意図した位置に挿入する**（「全消灯」は常に最後の番号でいてほしい）
 - **6状態を超えるなら `keymap.c` の EEPROM 復元マスク `u & 0x07` を広げる**
   （忘れると電源断で巻き戻る）
