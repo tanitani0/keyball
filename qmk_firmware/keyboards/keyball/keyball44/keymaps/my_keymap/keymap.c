@@ -186,6 +186,7 @@ static const uint8_t PROGMEM led_coord[RGBLED_NUM] = {
 };
 
 #define FX_AXIS        225 // coordinate range is 0..224
+#define FX_CENTRE      112 // midpoint of the axis, and the mirror line
 #define FX_WIDTH       40  // triangular bump half-width (~2.5 coord units)
 #define FX_SPEED_SHIFT 4   // larger = slower
 // Render interval for moving effects. This was 50ms (20fps) on the Pro Micro:
@@ -301,13 +302,37 @@ void keyboard_post_init_user(void) {
 //                     (built-in ranges {255,170,127,85,64})
 static const uint8_t PROGMEM fx_speed_shift[3]    = {6, 5, 4};             // slow -> fast
 static const uint8_t PROGMEM fx_gradient_range[5] = {255, 170, 127, 85, 64};
+// Hue span for the mirrored gradient: full circle, half, subtle.
+static const uint8_t PROGMEM fx_mirror_range[3]   = {255, 127, 64};
 
 // kind: 1 = travelling bump (SNAKE), 2 = scrolling rainbow (SWIRL),
-//       3 = still rainbow (STATIC_GRADIENT). delta = sub-mode offset.
+//       3 = still rainbow (STATIC_GRADIENT), 4 = mirrored still rainbow
+//       (KNIGHT). delta = sub-mode offset.
 static void fx_render(uint8_t kind, uint8_t delta) {
     uint8_t sat  = rgblight_get_sat();
     uint8_t maxv = rgblight_get_val();
-    if (kind == 3) {
+    if (kind == 4) {
+        // Mirrored still rainbow: hue follows the distance from the centre of
+        // the board rather than the raw coordinate, so the two halves are each
+        // other's mirror image. The measured coordinates make this exact --
+        // the left spans 0..98 and the right 126..224, both 112 from the centre
+        // at 112, and the two inner edges sit 14 either side of it.
+        //
+        // Sub-mode picks how much of the hue circle is spanned. As with the
+        // gradient on the STATIC_GRADIENT slot the hue currently set is the
+        // starting point, but here the gradient starts at the mirror line: the
+        // centre of the board carries that hue and the sweep runs outwards to
+        // hue+range at both outer edges. To start from the edges instead and
+        // converge on the centre, use (FX_CENTRE - d) in place of d below.
+        uint8_t range  = pgm_read_byte(&fx_mirror_range[delta % 3]);
+        uint8_t offset = rgblight_get_hue();
+        for (uint8_t i = 0; i < RGBLED_NUM; i++) {
+            uint8_t c = pgm_read_byte(&led_coord[i]);
+            uint8_t d = (c > FX_CENTRE) ? (c - FX_CENTRE) : (FX_CENTRE - c); // 0..112
+            uint8_t hue = (uint8_t)(((uint16_t)d * range) / FX_CENTRE) + offset;
+            sethsv(hue, sat, maxv, &led[i]);
+        }
+    } else if (kind == 3) {
         // Still rainbow: the sub-mode narrows the span of the hue circle mapped
         // across the board, from a full rainbow down to a subtle gradient.
         // The built-in picks the range with delta/2, which makes each pair of
@@ -387,6 +412,13 @@ void housekeeping_task_user(void) {
     } else if (mode >= RGBLIGHT_MODE_STATIC_GRADIENT && mode <= RGBLIGHT_MODE_STATIC_GRADIENT + 9) {
         kind  = 3; // coordinate still rainbow
         delta = mode - RGBLIGHT_MODE_STATIC_GRADIENT;
+    } else if (mode >= RGBLIGHT_MODE_KNIGHT && mode <= RGBLIGHT_MODE_KNIGHT + 2) {
+        // KNIGHT's own scanning bar is redundant with the coordinate bump on
+        // the SNAKE slot, so its three sub-modes carry the mirrored gradient.
+        // RGBLIGHT_EFFECT_KNIGHT has to stay defined in config.h even though
+        // nothing renders it now: dropping it renumbers every mode above it.
+        kind  = 4; // mirrored coordinate still rainbow
+        delta = mode - RGBLIGHT_MODE_KNIGHT;
     }
 
     // Repaint on any change (mode / color / brightness / zone), tracked on BOTH
@@ -407,12 +439,12 @@ void housekeeping_task_user(void) {
     // our frames (only needed when entering the mode).
     if (changed) rgblight_timer_disable();
 
-    if (kind == 3) {
+    if (kind == 3 || kind == 4) {
         // Still image: render on change plus a slow heartbeat to reassert.
         static uint16_t lt = 0;
         if (changed || timer_elapsed(lt) > 500) {
             lt = timer_read();
-            fx_render(3, delta);
+            fx_render(kind, delta);
         }
         return;
     }
