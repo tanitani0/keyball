@@ -142,8 +142,13 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 // pushed to the slave or only one side would go dark.
 #define SPLIT_TRANSACTION_IDS_USER USER_SYNC_BACK
 
-// Recover the slave half if it locks up. The ws2812 bitbang driver disables
-// interrupts for ~0.9ms per LED frame, which can corrupt the soft-serial split
-// link; the watchdog resets a half that stops responding instead of leaving it
-// stuck with stale colors.
+// Recover the slave half if it locks up: reset a half that stops responding
+// rather than leaving it stuck with stale colors.
+//
+// The original reason is gone -- on the Pro Micro the ws2812 bit-bang driver
+// disabled interrupts for ~0.9ms per frame and corrupted the soft-serial link,
+// while RP2040 drives the LEDs from PIO/DMA without blocking the CPU. Kept
+// anyway: it costs nothing now that flash is not scarce, it only acts when a
+// half has already stopped talking, and a split link can wedge for other
+// reasons (cable, connector) where an automatic reset is still the right cure.
 #define SPLIT_WATCHDOG_ENABLE

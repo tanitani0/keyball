@@ -164,10 +164,12 @@ static const uint8_t PROGMEM led_coord[RGBLED_NUM] = {
 #define FX_AXIS        225 // coordinate range is 0..224
 #define FX_WIDTH       40  // triangular bump half-width (~2.5 coord units)
 #define FX_SPEED_SHIFT 4   // larger = slower
-// Render interval for moving effects. Each LED push disables interrupts for
-// ~0.9ms (ws2812 bitbang does cli() for the whole frame), which can corrupt the
-// timing-critical soft serial split link, so this is 20fps rather than 33fps.
-#define FX_FRAME_MS    50
+// Render interval for moving effects. This was 50ms (20fps) on the Pro Micro:
+// the AVR ws2812 driver bit-banged the line with interrupts disabled for the
+// whole ~0.9ms frame, which corrupted the timing-critical soft serial link
+// between the halves. On RP2040 the PIO clocks the data out over DMA, so the
+// CPU is never blocked and the rate is free.
+#define FX_FRAME_MS    16   // ~60fps
 
 // LED zone cycle state, read by the masking code in rgblight_call_driver so it
 // applies to every lighting mode. 0 all on, 1 upper-underglow off, 2 all

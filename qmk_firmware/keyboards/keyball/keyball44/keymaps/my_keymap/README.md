@@ -28,21 +28,19 @@
 
 ```bash
 cd ~/firmware/qmk_firmware
-
-# Pro Micro (ATmega32U4) — 現行
 ../.venv/bin/qmk compile -kb keyball/keyball44 -km my_keymap
-#   -> keyball_keyball44_my_keymap.hex
-
-# Liatris (RP2040) — コンスルー入手後
-../.venv/bin/qmk compile -kb keyball/keyball44 -km my_keymap -e CONVERT_TO=liatris
 #   -> keyball_keyball44_my_keymap_liatris.uf2
 ```
 
-必要なツールチェーン（導入済み: avr-gcc 7.3.0 / arm-none-eabi-gcc 13.2.1）:
+`CONVERT_TO = liatris` は `rules.mk` に書いてあるのでコマンドラインでの指定は不要。
+Pro Micro (ATmega32U4) 向けにビルドしたい場合はその行を外すが、**復活させた機能を
+いくつか削らないと 28,672 バイトに入らない**。
+
+必要なツールチェーン:
 
 ```bash
-sudo apt install gcc-avr avr-libc binutils-avr   # Pro Micro
-sudo apt install gcc-arm-none-eabi               # Liatris
+sudo apt install gcc-arm-none-eabi               # Liatris (RP2040)
+sudo apt install gcc-avr avr-libc binutils-avr   # Pro Micro に戻す場合のみ
 ```
 
 `make keyball/keyball44:my_keymap` のように **make を直接叩く場合は、`qmk` 自体が PATH に
@@ -56,15 +54,14 @@ source ~/firmware/.venv/bin/activate
 
 ### 容量
 
-Pro Micro (caterina) の上限は 28,672 バイトで、現状 **28,650 バイト / 残り 22 バイト**。
-**もう空きがない。** Pro Micro のまま何か足すなら、まず下記のどれかで容量を作ること。
-非常にタイトなので、機能追加のたびにビルド時の警告を確認すること。
-足りなくなったら `config.h` の `RGBLIGHT_EFFECT_*` を削ると 1 効果あたり 200 バイト前後戻る
-（CHRISTMAS / RGB_TEST / ALTERNATING の3つで実測 624 バイト）。
+RP2040 の使える flash は **2 MB**（Liatris の実装は 16 MB だが、QMK の RP2040 リンカ
+スクリプトが 2 MB 前提。EEPROM 相当のウェアレベリング領域もその末尾に置かれる）。
+現状 **約 65 KB / 3%** しか使っていないので、当面は容量を気にする必要はない。
 
-Liatris では 2 MB（QMK の RP2040 リンカスクリプトが 16 MB のうち 2 MB を使う）に対して
-48 KB しか使わないので、容量のために削った機能（OLED、Auto Mouse Layer、LTO 等）は
-すべて戻せる。
+Pro Micro 時代は 28,672 バイト中 残り 22 バイトまで詰まっており、OLED・EXTRAKEY・
+NKRO・BOOTMAGIC・MAGIC などを泣く泣く切っていた。移行後にすべて戻してある
+（`rules.mk` 参照）。意図的に切ったままなのは MOUSEKEY（トラックボールがあるので不要）、
+CONSOLE/COMMAND（デバッグ用）、Auto Mouse Layer（操作感が変わるため不要との判断）。
 
 ## 書き込み
 
