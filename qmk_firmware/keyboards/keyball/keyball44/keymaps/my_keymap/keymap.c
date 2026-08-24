@@ -353,13 +353,21 @@ static void fx_render(uint8_t kind, uint8_t delta) {
 }
 
 void housekeeping_task_user(void) {
-    // Push the underglow toggle to the slave (keys are only processed on the
-    // master, so without this only the master half would go dark). Sent on
-    // change, with retries until it lands.
+    // Push the zone state to the slave: keys are only processed on the master,
+    // so without this only the master half would follow LED_MODE.
+    //
+    // Reasserted on a slow heartbeat, not just when it changes. A send that
+    // "succeeds" is not proof the slave took it -- transactions.c skips the
+    // callback when the slave has not registered its handler yet and still
+    // reports success, so a send that races the slave's keyboard_post_init_user
+    // is silently dropped. The same hole swallows the state whenever the slave
+    // restarts on its own (split watchdog, a knocked cable). Sending once left
+    // that half stuck on its own boot state until LED_MODE was pressed again.
     if (is_keyboard_master()) {
-        static uint8_t  sent = 0xff;
+        static uint8_t  sent     = 0xff;
         static uint16_t last_try = 0;
-        if (sent != rgb_led_state && timer_elapsed(last_try) > 50) {
+        uint16_t        interval = (sent != rgb_led_state) ? 50 : 1000;
+        if (timer_elapsed(last_try) > interval) {
             last_try      = timer_read();
             uint8_t state = rgb_led_state;
             if (transaction_rpc_send(USER_SYNC_BACK, sizeof(state), &state)) {
