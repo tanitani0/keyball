@@ -128,11 +128,19 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 // longer models anything real.
 //
 // Calibration: the limiter is applied per half, over that half's 30 LEDs (see
-// RGBLED_SPLIT). White at val=85 measured 30 * (85*3) = 7650 as the last stable
-// point, and the budget keeps 10% below it. To re-measure: comment out
-// RGB_CURRENT_BUDGET, flash, raise brightness on pure white until the board
-// resets, then set the budget to 30 * (last_good_val * 3) * 0.9.
-#define RGB_CURRENT_BUDGET 6885 // white capped at val~76 (10% under the measured 85)
+// RGBLED_SPLIT). Pure white held up to a raw val of 217 with every LED lit, so
+// 30 * (217*3) = 19530 is the ceiling and the budget sits 5% under it.
+//
+// MIND THE UNITS. QMK's val is 0..255, but Remap's brightness slider shows
+// 0..100 -- its "85" is the 217 here. Reading a slider percentage as a raw
+// value once put this budget 2.55x too low, which capped white at 29% on that
+// slider and made the whole board look dim.
+//
+// To re-measure: comment out RGB_CURRENT_BUDGET, flash, and raise the
+// brightness on pure white (all LEDs lit, the worst case) until the board
+// browns out and resets. Then set the budget to 30 * (last_good_raw_val * 3)
+// * 0.95. Take the raw value from the OLED, not from Remap.
+#define RGB_CURRENT_BUDGET 18553 // white capped at raw val 206 (~80% in Remap)
 #define RGB_WEIGHT_R       256  // equal weights: current does not depend on colour
 #define RGB_WEIGHT_G       256
 #define RGB_WEIGHT_B       256
