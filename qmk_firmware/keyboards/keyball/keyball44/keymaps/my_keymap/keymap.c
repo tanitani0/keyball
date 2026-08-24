@@ -302,8 +302,10 @@ void keyboard_post_init_user(void) {
 //                     (built-in ranges {255,170,127,85,64})
 static const uint8_t PROGMEM fx_speed_shift[3]    = {6, 5, 4};             // slow -> fast
 static const uint8_t PROGMEM fx_gradient_range[5] = {255, 170, 127, 85, 64};
-// Hue span for the mirrored gradient: full circle, half, subtle.
-static const uint8_t PROGMEM fx_mirror_range[3]   = {255, 127, 64};
+// Hue span for the mirrored gradient. A full circle turned out to read as busy
+// over six columns a side -- roughly 40 hue steps between neighbours -- so the
+// widest setting is half a turn. The narrow end is the one that looked right.
+static const uint8_t PROGMEM fx_mirror_range[3]   = {128, 96, 64};
 
 // kind: 1 = travelling bump (SNAKE), 2 = scrolling rainbow (SWIRL),
 //       3 = still rainbow (STATIC_GRADIENT), 4 = mirrored still rainbow
@@ -320,16 +322,17 @@ static void fx_render(uint8_t kind, uint8_t delta) {
         //
         // Sub-mode picks how much of the hue circle is spanned. As with the
         // gradient on the STATIC_GRADIENT slot the hue currently set is the
-        // starting point, but here the gradient starts at the mirror line: the
-        // centre of the board carries that hue and the sweep runs outwards to
-        // hue+range at both outer edges. To start from the edges instead and
-        // converge on the centre, use (FX_CENTRE - d) in place of d below.
+        // starting point; here it sits at the two outer edges and the sweep
+        // runs inwards, meeting at hue+range on the mirror line. Swap the
+        // (FX_CENTRE - d) below for a plain d to run it the other way, with the
+        // set hue in the middle and the sweep heading outwards.
         uint8_t range  = pgm_read_byte(&fx_mirror_range[delta % 3]);
         uint8_t offset = rgblight_get_hue();
         for (uint8_t i = 0; i < RGBLED_NUM; i++) {
             uint8_t c = pgm_read_byte(&led_coord[i]);
-            uint8_t d = (c > FX_CENTRE) ? (c - FX_CENTRE) : (FX_CENTRE - c); // 0..112
-            uint8_t hue = (uint8_t)(((uint16_t)d * range) / FX_CENTRE) + offset;
+            uint8_t d = (c > FX_CENTRE) ? (c - FX_CENTRE) : (FX_CENTRE - c);
+            if (d > FX_CENTRE) d = FX_CENTRE; // only the unused slot 59 (coord 255) gets here
+            uint8_t hue = (uint8_t)(((uint16_t)(FX_CENTRE - d) * range) / FX_CENTRE) + offset;
             sethsv(hue, sat, maxv, &led[i]);
         }
     } else if (kind == 3) {
