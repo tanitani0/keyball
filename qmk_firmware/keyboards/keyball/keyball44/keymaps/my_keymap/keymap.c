@@ -128,6 +128,30 @@ bool get_permissive_hold(uint16_t keycode, keyrecord_t *record) {
     return IS_QK_LAYER_TAP(keycode) && (PERMISSIVE_HOLD_LAYERS & (1 << QK_LAYER_TAP_GET_LAYER(keycode)));
 }
 
+#ifdef CONVERT_TO_LIATRIS
+// The Liatris carries its own amber power LED on GP24, bright enough and placed
+// awkwardly enough to be a nuisance under the board. Its logic is inverted:
+// driving the pin HIGH is what turns it off.
+//
+// Runs on both halves (keyball's keyboard_pre_init_kb calls into here). The LED
+// still flashes on at power-up, before any firmware runs -- that is wired into
+// the board and cannot be suppressed from here.
+//
+// To get it back, drop this function. To repurpose it as a Caps Lock indicator
+// instead, delete this and put in config.h:
+//     #define LED_CAPS_LOCK_PIN GP24
+//     #define LED_PIN_ON_STATE 0
+// Not GP24: the promicro converter's _pin_defs.h shadows the RP2040 vendor one
+// and only defines the Pro Micro names, so the GP* aliases are not visible here.
+// The vendor header spells GP24 as 24U, so this is the same value.
+#    define LIATRIS_POWER_LED_PIN 24U
+
+void keyboard_pre_init_user(void) {
+    setPinOutput(LIATRIS_POWER_LED_PIN);
+    writePinHigh(LIATRIS_POWER_LED_PIN);
+}
+#endif
+
 #ifdef OLED_ENABLE
 
 #    include "lib/oledkit/oledkit.h"

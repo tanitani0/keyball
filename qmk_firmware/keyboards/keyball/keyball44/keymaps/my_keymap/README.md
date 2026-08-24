@@ -204,6 +204,28 @@ Ctrl+文字 になってしまう。
 | `HOLD_ON_OTHER_KEY_PRESS_PER_KEY` + フック | 28,786 | **容量超過** |
 | `get_tapping_term` を流用した自前実装（押しで確定） | 28,616 | 56 |
 
+### Liatris 本体の電源 LED を消す
+Liatris は基板上に自前のオレンジ色の電源 LED を持っている（**GP24**）。キーボードに
+組むと眩しく、位置も邪魔なので `keymap.c` の `keyboard_pre_init_user` で消している。
+
+**論理が反転していて、ピンを High にすると消灯**する（splitkb のドキュメントに明記）。
+左右両方で走る（keyball の `keyboard_pre_init_kb` がここを呼ぶ）。
+
+電源投入直後、ファームウェアが走り始めるまでの一瞬は点灯する。これは基板の配線に
+よるものでファームウェアからは抑えられない。
+
+ピン名を `GP24` ではなく生の `24U` で書いているのは、promicro コンバータの
+`_pin_defs.h` が RP2040 ベンダ側のものを覆い隠しており、Pro Micro 名（`D3` など）
+しか見えないため。ベンダ側で `GP24` は `24U` と定義されているので値は同じ。
+
+戻したい場合はこの関数を消す。Caps Lock インジケータとして使うなら、代わりに
+`config.h` に以下を書く:
+
+```c
+#define LED_CAPS_LOCK_PIN GP24
+#define LED_PIN_ON_STATE 0
+```
+
 ### SK6812 のタイミング
 `config.h` の `WS2812_TIMING` / `WS2812_T0H` / `WS2812_T1H`。QMK の既定値は
 WS2812B 用で、そこから導かれる `T1L` が 350ns になる。SK6812MINI-E の規格は
