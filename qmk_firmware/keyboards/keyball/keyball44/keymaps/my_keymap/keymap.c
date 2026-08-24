@@ -100,11 +100,12 @@ report_mouse_t pointing_device_task_user(report_mouse_t r) {
     if (r.x != 0 || r.y != 0) {
         ball_move_time = timer_read();
         ball_moved     = true;
-    } else if (ball_moved && timer_elapsed(ball_move_time) > TAPPING_TERM) {
+    } else if (ball_moved && timer_elapsed(ball_move_time) > SCROLL_LAYER_TAPPING_TERM) {
         // Expire the stamp well before the 16-bit timer can wrap past it.
         // Without this, a timestamp older than ~32.7s reads as being in the
         // future and would settle the next tap-hold the instant it is pressed.
-        // Nothing can still be pending this long after the motion anyway.
+        // Held for the scroll layer's own term, the longest a decision that
+        // cares about this stamp can stay open.
         ball_moved = false;
     }
     return r;
@@ -118,6 +119,7 @@ uint16_t get_tapping_term(uint16_t keycode, keyrecord_t *record) {
         if (ball_moved && (int16_t)(ball_move_time - record->event.time) > 0) {
             return 0;
         }
+        return SCROLL_LAYER_TAPPING_TERM;
     }
     return TAPPING_TERM;
 }

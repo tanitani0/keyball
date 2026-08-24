@@ -80,6 +80,12 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define TAPPING_TERM_PER_KEY
 #define SCROLL_LAYER 3
 
+// The scroll layer gets a longer tap-hold window than the default 200ms. Moving
+// the ball settles it as a hold on the spot, so nothing about reaching the layer
+// gets slower -- the extra time only buys a more forgiving tap on the key's own
+// keycode. Everything else, mod-taps included, keeps the stock term.
+#define SCROLL_LAYER_TAPPING_TERM 400
+
 // Layers 1 and 2 are also reached by holding, and waiting out the full tapping
 // term to get there feels sluggish. Permissive hold settles them as soon as
 // another key is pressed *and released* inside the term, so nesting a key под
