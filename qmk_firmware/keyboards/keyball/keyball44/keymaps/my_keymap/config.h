@@ -40,6 +40,28 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #define TAP_CODE_DELAY 5
 
+// --- SK6812MINI-E timing -----------------------------------------------------
+// QMK's defaults are WS2812B's (1250ns period, T1H 900 -> T1L 350). SK6812MINI-E
+// wants 600ns +/-150 for both halves of a 1 bit, so the stock T1L of 350ns is
+// below its 450ns minimum: the low period after a 1 bit is too short and the
+// following bit can be sampled wrong, lighting channels that were sent as 0 and
+// washing the colors out.
+//
+// This did not show up on the Pro Micro because the AVR driver bit-banged the
+// line in whole CPU cycles with loop overhead, so the real low periods came out
+// longer than the nominal figure. The RP2040 PIO emits exactly what is asked
+// for, which is what exposed the violation. Every value below is a multiple of
+// 50ns, the PIO's granularity, so they are reproduced exactly.
+#define WS2812_TIMING 1200 // bit period
+#define WS2812_T0H    300  // -> T0L 900
+#define WS2812_T1H    600  // -> T1L 600
+
+// The frame-wide current limiter below is the safety mechanism, so let single
+// colors reach full brightness instead of being flattened by the keyboard's
+// blanket per-channel cap of 150.
+#undef RGBLIGHT_LIMIT_VAL
+#define RGBLIGHT_LIMIT_VAL 255
+
 // --- Instant scroll on ball motion -------------------------------------------
 // The scroll layer is reached through the hold half of a tap-hold key, so it
 // normally takes TAPPING_TERM (200ms) of holding before scrolling starts --
@@ -79,37 +101,41 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 // (Remap's "Clear EEPROM" / bootmagic) is required after flashing.
 #define DYNAMIC_KEYMAP_LAYER_COUNT 6
 
-// --- Current-aware RGB brightness limiter -----------------------------------
-// The Keyball is USB bus powered. Lighting many channels at once (e.g. white on
-// every LED) can draw more current than the port/ProMicro polyfuse supplies,
-// making VDD sag and the LEDs flicker. RGBLIGHT_LIMIT_VAL only caps per-channel
-// brightness, so it also dims single colors. Instead we scale the *whole frame*
-// down only when its estimated current exceeds a budget; low-load scenes
-// (single color / few LEDs) pass through untouched.
+// --- Current-aware RGB brightness limiter ------------------------------------
+// The Keyball is USB bus powered and the master half feeds the slave over TRRS.
+// Lighting many channels at once draws more than the supply can hold up, VDD
+// sags, and the MCU browns out -- measured on Liatris as a reboot loop at pure
+// white above val=85 with every LED on. RGBLIGHT_LIMIT_VAL only caps each
+// channel, so it would dim single colors just as hard while doing nothing about
+// the total. Instead the whole frame is scaled down, and only when its estimated
+// current exceeds a budget; low-load scenes pass through untouched.
 //
-// The actual scaling lives in quantum/rgblight/rgblight.c:rgblight_call_driver
-// (overriding it from the keymap does not work: rgblight.c inlines its own weak
-// definition, so the core function is the only reliable place). That code is
-// gated on RGB_CURRENT_BUDGET, so it is active only for this keymap.
+// The scaling lives in rgblight_call_driver in keymap.c, which overrides the
+// weak definition in quantum/rgblight/rgblight.c. It is gated on
+// RGB_CURRENT_BUDGET, so undefining that disables the limiter outright (useful
+// for re-measuring).
 //
-// Model: flicker is color dependent (SK6812MINI-E, 12mA/ch constant current).
-// It is supply droop meeting each LED's forward-voltage headroom: red (low VF)
-// tolerates droop, blue/green (high VF) flicker first. So we sum a *weighted*
-// stress = Σ(r*Wr + g*Wg + b*Wb)/256 and cap it. Red is weighted light.
-// Tuning: lower RGB_CURRENT_BUDGET if flicker remains; raise a color's weight
-// to make that color start dimming sooner.
-// Calibrated to this board's measured flicker behavior (Remap brightness, single
-// color). Weights decouple each color's cap: cap(color) ~= BUDGET / (k * W_color)
-// with the mixed weight for white. Current targets:
-//   white ~42 (tight; white flickered slightly at 50), blue ~free (fine at 100),
-//   green ~92 (removes its slight flicker), red never caps.
-// To retune: white cap moves with BUDGET and the *sum* of weights; to loosen a
-// single color raise its cap by lowering its weight; to tighten it raise its
-// weight. Lower BUDGET tightens everything.
-#define RGB_CURRENT_BUDGET 1425 // 5% safety margin (was 1500); weights unchanged
-#define RGB_WEIGHT_R       96  // red very tolerant -> light weight, never caps
-#define RGB_WEIGHT_G       300 // green: slightly tightened
-#define RGB_WEIGHT_B       256 // blue: full weight (kept loose -> ~free to 100)
+// Model: SK6812MINI-E drives each channel from its own constant-current sink, so
+// the current pulled from VDD is proportional to the sum of the channel duty
+// cycles regardless of colour. Hence stress = Σ(r*Wr + g*Wg + b*Wb)/256 with all
+// three weights equal, and the budget is a plain cap on Σ(r+g+b).
+//
+// This replaced an earlier colour-weighted model (R 96 / G 300 / B 256) that was
+// calibrated on the Pro Micro against *flicker*, which is a different mechanism:
+// supply droop meeting each LED's forward-voltage headroom, so blue and green
+// gave out first while red rode it out. On Liatris no flicker appears at any
+// brightness -- the failure is a hard brownout instead -- so the colour term no
+// longer models anything real.
+//
+// Calibration: the limiter is applied per half, over that half's 30 LEDs (see
+// RGBLED_SPLIT). White at val=85 measured 30 * (85*3) = 7650 as the last stable
+// point, and the budget keeps 10% below it. To re-measure: comment out
+// RGB_CURRENT_BUDGET, flash, raise brightness on pure white until the board
+// resets, then set the budget to 30 * (last_good_val * 3) * 0.9.
+#define RGB_CURRENT_BUDGET 6885 // white capped at val~76 (10% under the measured 85)
+#define RGB_WEIGHT_R       256  // equal weights: current does not depend on colour
+#define RGB_WEIGHT_G       256
+#define RGB_WEIGHT_B       256
 
 // (LED_MAP removed: the custom coordinate flow in keymap.c uses the raw led[]
 // indexed by physical chain position, so no logical remap is wanted here.)
