@@ -1,5 +1,8 @@
 # Keyball44 / my_keymap
 
+本家: [Yowkees/keyball](https://github.com/Yowkees/keyball) ／
+コントローラは Pro Micro から [Liatris](https://splitkb.com/products/liatris) (RP2040) に換装済み。
+
 ## 全体構成
 
 ソースは2つのリポジトリに分かれている。
