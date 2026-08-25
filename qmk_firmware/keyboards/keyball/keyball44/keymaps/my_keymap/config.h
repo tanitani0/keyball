@@ -182,6 +182,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 // pushed to the slave or only one side would go dark.
 #define SPLIT_TRANSACTION_IDS_USER USER_SYNC_BACK
 
+// The host only tells the USB-connected half about caps/num/scroll lock, so the
+// state has to be forwarded for the other half's OLED to show it.
+#define SPLIT_LED_STATE_ENABLE
+
 // Recover the slave half if it locks up: reset a half that stops responding
 // rather than leaving it stuck with stale colors.
 //

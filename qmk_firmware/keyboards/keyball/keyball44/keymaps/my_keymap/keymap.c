@@ -158,6 +158,13 @@ void keyboard_pre_init_user(void) {
 
 #    include "lib/oledkit/oledkit.h"
 
+// oledkit rotates the slave 180 degrees, which is a framing choice for the logo
+// it normally shows there. That half now shows text, so both sides keep the
+// keyboard's default orientation and read the same way round.
+oled_rotation_t oled_init_user(oled_rotation_t rotation) {
+    return rotation;
+}
+
 void oledkit_render_info_user(void) {
     keyball_oled_render_keyinfo();
     keyball_oled_render_ballinfo();
@@ -381,6 +388,99 @@ static void fx_render(uint8_t kind, uint8_t delta) {
     }
     rgblight_set();
 }
+
+#    ifdef OLED_ENABLE
+// Writes s truncated or space-padded to exactly width cells, so columns line up
+// without every caller doing its own arithmetic.
+static void oled_write_pad(const char *s, uint8_t width, bool invert) {
+    uint8_t n = 0;
+    for (; *s && n < width; n++) {
+        oled_write_char(*s++, invert);
+    }
+    for (; n < width; n++) {
+        oled_write_char(' ', invert);
+    }
+}
+
+// Label for the current lighting mode, plus its 1-based sub-mode. The four
+// hijacked slots are named for what they actually draw rather than for the
+// built-in effect whose numbers they borrow. Every RGBLIGHT_EFFECT_* referenced
+// here has to stay enabled in config.h -- the constants only exist for enabled
+// effects, and disabling one renumbers everything above it anyway.
+static const char *rgb_mode_name(uint8_t mode, uint8_t *sub) {
+    uint8_t     base;
+    const char *name;
+    // clang-format off
+    if      (mode >= RGBLIGHT_MODE_TWINKLE)         { base = RGBLIGHT_MODE_TWINKLE;         name = "twinkle";  }
+    else if (mode >= RGBLIGHT_MODE_ALTERNATING)     { base = RGBLIGHT_MODE_ALTERNATING;     name = "altern";   }
+    else if (mode >= RGBLIGHT_MODE_RGB_TEST)        { base = RGBLIGHT_MODE_RGB_TEST;        name = "rgbtest";  }
+    else if (mode >= RGBLIGHT_MODE_STATIC_GRADIENT) { base = RGBLIGHT_MODE_STATIC_GRADIENT; name = "gradient"; }
+    else if (mode >= RGBLIGHT_MODE_CHRISTMAS)       { base = RGBLIGHT_MODE_CHRISTMAS;       name = "xmas";     }
+    else if (mode >= RGBLIGHT_MODE_KNIGHT)          { base = RGBLIGHT_MODE_KNIGHT;          name = "mirror";   }
+    else if (mode >= RGBLIGHT_MODE_SNAKE)           { base = RGBLIGHT_MODE_SNAKE;           name = "bump";     }
+    else if (mode >= RGBLIGHT_MODE_RAINBOW_SWIRL)   { base = RGBLIGHT_MODE_RAINBOW_SWIRL;   name = "flow";     }
+    else if (mode >= RGBLIGHT_MODE_RAINBOW_MOOD)    { base = RGBLIGHT_MODE_RAINBOW_MOOD;    name = "rainbow";  }
+    else if (mode >= RGBLIGHT_MODE_BREATHING)       { base = RGBLIGHT_MODE_BREATHING;       name = "breathe";  }
+    else                                            { base = RGBLIGHT_MODE_STATIC_LIGHT;    name = "solid";    }
+    // clang-format on
+    *sub = mode - base + 1;
+    return name;
+}
+
+static const char *rgb_zone_name(uint8_t state) {
+    switch (state) {
+        case 0: return "all on";
+        case 1: return "upper UG off";
+        case 2: return "underglow off";
+        case 3: return "3x5 block";
+        default: return "all off";
+    }
+}
+
+// The half without USB. oledkit hands this the slave side, where it normally
+// draws the Keyball logo; the status of the lighting is more use there than a
+// second logo. Laid out like the master's readout: a four cell label, the
+// \xB1 separator glyph, then the value.
+//
+//     Mode: gradient       3
+//     HSV : 128 255 206
+//     Zone: 3x5 block
+//     Lock: CAP NUM SCR      <- a lock that is on is drawn inverted
+//
+// Everything shown here is pushed over from the master: RGBLIGHT_SPLIT syncs the
+// mode and colour, USER_SYNC_BACK carries the zone, and SPLIT_LED_STATE_ENABLE
+// forwards the lock state that only the USB side hears about.
+void oledkit_render_logo_user(void) {
+    uint8_t sub;
+    oled_write_P(PSTR("Mode\xB1 "), false);
+    // 11 not 12: a line is 21 cells, and filling it exactly wraps the cursor
+    // to the next line, after which oled_advance_page would eat that line too.
+    oled_write_pad(rgb_mode_name(rgblight_get_mode(), &sub), 11, false);
+    oled_write(get_u8_str(sub, ' '), false);
+    oled_advance_page(true);
+
+    oled_write_P(PSTR("HSV \xB1 "), false);
+    oled_write(get_u8_str(rgblight_get_hue(), ' '), false);
+    oled_write_char(' ', false);
+    oled_write(get_u8_str(rgblight_get_sat(), ' '), false);
+    oled_write_char(' ', false);
+    oled_write(get_u8_str(rgblight_get_val(), ' '), false);
+    oled_advance_page(true);
+
+    oled_write_P(PSTR("Zone\xB1 "), false);
+    oled_write(rgb_zone_name(rgb_led_state), false);
+    oled_advance_page(true);
+
+    led_t lock = host_keyboard_led_state();
+    oled_write_P(PSTR("Lock\xB1 "), false);
+    oled_write_P(PSTR("CAP"), lock.caps_lock);
+    oled_write_char(' ', false);
+    oled_write_P(PSTR("NUM"), lock.num_lock);
+    oled_write_char(' ', false);
+    oled_write_P(PSTR("SCR"), lock.scroll_lock);
+    oled_advance_page(true);
+}
+#    endif // OLED_ENABLE
 
 void housekeeping_task_user(void) {
     // Push the zone state to the slave: keys are only processed on the master,
